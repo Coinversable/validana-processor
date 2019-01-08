@@ -265,8 +265,8 @@ export class Processor extends Basic {
 								contractType,
 								tx.getAddress(),
 								payload.receiver === undefined ? undefined : payload.receiver.toString().slice(0, 35),
-								payload.extra1 === undefined ? undefined : payload.extra1.toString().slice(0, 128),
-								payload.extra2 === undefined ? undefined : payload.extra2.toString().slice(0, 128)
+								payload.extra1 === undefined ? undefined : payload.extra1.toString().slice(0, 64),
+								payload.extra2 === undefined ? undefined : payload.extra2.toString().slice(0, 64)
 							];
 							//Mark the transaction as processing.
 							if ((result = await this.query(this.processingTxQuery, params, "processingTx")).error !== undefined) {
