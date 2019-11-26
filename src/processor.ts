@@ -10,7 +10,7 @@ import * as Cluster from "cluster";
 import {
 	Crypto, Log, Basic, QueryStatus, TxStatus, DBTransaction, DBBlock, Block,
 	Transaction, CreatePayload, DeletePayload, PrivateKey
-} from "validana-core";
+} from "@coinversable/validana-core";
 import { Config } from "./config";
 
 /** How a raw transaction looks like without the extra data we use for quick lookoup. (Except for create_ts and status.) */
