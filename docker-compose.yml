@@ -41,6 +41,7 @@ services:
       VNODE_KEYPATH: '/usr/node/certificates/mycert.key'
       VNODE_CERTPATH: '/usr/node/certificates/mycert.cert'
       VNODE_PROCESSORPORT: 56789
+      VNODE_LISTENPORT: 29473
     #volumes:
       #- ./certificates:/usr/node/certificates
     ports:

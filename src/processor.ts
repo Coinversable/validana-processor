@@ -136,7 +136,7 @@ export class Processor extends Basic {
 					if (Number.isNaN(ourPostgresVersion) || ourPostgresVersion < 90500) {
 						return await Processor.shutdown(52, "Too old or invalid postgres version, requires at least 9.5, shutting down.");
 					} else {
-						if (ourPostgresVersion >= 120000 && !this.warnedPostgresVersion) {
+						if (ourPostgresVersion >= 130000 && !this.warnedPostgresVersion) {
 							this.warnedPostgresVersion = true;
 							Log.warn("Validana has not been tested for postgres version 13+, use at your own risk!");
 						}
