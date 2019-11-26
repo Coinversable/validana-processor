@@ -2,77 +2,90 @@ version: "2"
 services:
   processor:
     build:
-      context: https://github.com/Coinversable/validana-processor.git#v1.0.1
+      context: https://github.com/Coinversable/validana-processor.git#v2.1.2
       dockerfile: Processor.Dockerfile
       args:
-        NODEVERSION: 10
+        NODEVERSION: 12
     restart: unless-stopped
     environment:
+      VPROC_DBHOST: database
+      # For example use the following site or commands: https://coinversable.github.io/validana-client/key.html
+      # docker build -t validana_proc https://raw.githubusercontent.com/Coinversable/validana-processor/master/Processor.Dockerfile
+      # docker run -it --entrypoint /usr/local/bin/yarn validana_proc --silent keysjson
       VPROC_PRIVATEKEY: 
       # Should be the same as database PROCESSORPASS below.
       VPROC_DBPASSWORD: 
-      # Should be the same as SIGNPREFIX below.
+      # Should be the same as SIGNPREFIX below. (For example pick the name of your application.)
       VPROC_SIGNPREFIX: 
-      VPROC_DBHOST: database
   node:
     build:
-      context: https://github.com/Coinversable/validana-node.git#v1.0.1
+      context: https://github.com/Coinversable/validana-node.git#v2.1.2
       dockerfile: Node.Dockerfile
       args:
-        NODEVERSION: 10
+        NODEVERSION: 12
     restart: unless-stopped
     environment:
       VNODE_ISPROCESSOR: 'true'
-      VNODE_ENCRYPTIONKEY: 
-      # Make sure it is the same as the port you expose.
-      VNODE_PROCESSORPORT: 56789
-      VNODE_TLS: 'false'
-      VNODE_KEYPATH: ''
-      VNODE_CERTPATH: ''
-      # Make sure it is the same as prefix above.
-      VNODE_SIGNPREFIX: 
-      # Make sure it is the same as the port you expose.
-      VNODE_LISTENPORT: 29473
-      # Should be the same as database BACKENDPASS below.
-      VNODE_DBPASSWORD: 
       VNODE_DBHOST: database
       VNODE_DBUSER: backend
       VNODE_DBNAME: blockchain
+      # If you want to use this enter a random length 64 hex string. Provide it to nodes that you want to be able to join.
+      VNODE_ENCRYPTIONKEY: 
+      # Make sure it is the same as prefix above.
+      VNODE_SIGNPREFIX: 
+      # Should be the same as database BACKENDPASS below.
+      VNODE_DBPASSWORD: 
+      # If you want to copy the key/cert files into the container download the Dockerfile and edit it manually.
+      # If you want to reference files outside the container (e.g. the ./certificates folder) uncomment the volume below.
+      VNODE_TLS: 'false'
+      VNODE_KEYPATH: '/usr/node/certificates/mycert.key'
+      VNODE_CERTPATH: '/usr/node/certificates/mycert.cert'
+    #volumes:
+      #- ./certificates:/usr/node/certificates
     ports:
-      - "29473:29473"
-      - "56789:56789"
+      # Change the left value to the port you want to expose it on, the right value is used internally.
+      - "29473:29473" # Port used for incomming p2p connections.
+      - "56789:56789" # Port used to be found by nodes, use this as VNODE_PROCESSORPORT for nodes.
   database:
     build: 
-      context: https://github.com/Coinversable/validana-processor.git#v1.0.1
+      context: https://github.com/Coinversable/validana-processor.git#v2.1.2
       dockerfile: DB.Dockerfile
       args:
+        POSTGRESVERSION: 12
+        # The processorpass is to be used the the processor only.
+        # Changing this afterwards requires removing the docker volume (containing all data!) or manually connecting to postgres and updating the password.
         PROCESSORPASS: 
+        # The backend pass can be used for any application wishing to integrate.
+        # Changing this afterwards requires removing the docker volume (containing all data!) or manually connecting to postgres and updating the password.
         BACKENDPASS: 
     restart: unless-stopped
     environment:
+      # The superuser should only be used for maintenance, backups, etc, never edit the data directly as nodes will refuse the changes!
       POSTGRES_PASSWORD: 
     volumes:
       - blockchain:/var/lib/postgresql/data
+    # If you wish to connect to the database from outside use the 'ports:' syntax that the node and server use.
     expose:
       - "5432"
   server:
-    build: 
-      context: https://github.com/Coinversable/validana-server.git#v1.0.1
+    build:
+      # The server you wish to use.
+      context: https://github.com/Coinversable/validana-server.git#v2.1.0
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      VSERVER_DBPASSWORD: 
       VSERVER_DBHOST: database
-      # Make sure it is the same as the port you expose.
-      VSERVER_RESTPORT: 80
-      # Make sure it is the same as the port you expose.
-      VSERVER_WSPORT: 8080
-      VSERVER_API: '{"v1": "/usr/node/dist/basics/basichandler.js"}'
+      # Should be the same as database BACKENDPASS above.
+      VSERVER_DBPASSWORD: 
+      # If you want to copy the key/cert files into the container download the Dockerfile and edit it manually.
+      # If you want to reference files outside the container (e.g. the ./certificates folder) uncomment the volume below.
       VSERVER_TLS: 'false'
-      VSERVER_KEYPATH: ''
-      VSERVER_CERTPATH: ''
+      VSERVER_KEYPATH: '/usr/node/certificates/mycert.key'
+      VSERVER_CERTPATH: '/usr/node/certificates/mycert.cert'
+    #volumes:
+      #- ./certificates:/usr/node/certificates
     ports:
-      - "80:80"
+      # Change the left value to the port you want to expose it on, the right value is used internally.
       - "8080:8080"
 
 volumes:

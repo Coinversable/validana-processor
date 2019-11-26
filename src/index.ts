@@ -1,4 +1,4 @@
-/**
+/*!
  * @license
  * Copyright Coinversable B.V. All Rights Reserved.
  *
@@ -12,7 +12,7 @@ import { Processor } from "./processor";
 import { Config, loadConfig } from "./config";
 
 //What if there is an exception that was not cought
-process.on("uncaughtException", (error: Error) => {
+process.on("uncaughtException", async (error: Error) => {
 	Sandbox.unSandbox();
 	if (error.stack === undefined) {
 		error.stack = "";
@@ -32,19 +32,23 @@ process.on("uncaughtException", (error: Error) => {
 			error.stack = error.stack.replace(new RegExp(config.VPROC_SENTRYURL, "g"), "");
 		}
 	}
-	Log.fatal("uncaughtException", error).then(() => process.exit(1));
+	await Processor.shutdown(1, "uncaughtException", error);
 });
-process.on("unhandledRejection", (reason: any, _: Promise<any>) => {
+process.on("unhandledRejection", async (reason: unknown, promise: Promise<unknown>) => {
 	Sandbox.unSandbox();
-	Log.fatal(`unhandledRejection: ${reason}`, new Error("unhandledRejection")).then(() => process.exit(1));
+	let error: Error | undefined;
+	await promise.catch((e) => error = e);
+	await Processor.shutdown(1, `unhandledRejection: ${reason}`, error);
 });
 process.on("warning", (warning: Error) => {
 	const shouldSandbox = Sandbox.isSandboxed();
 	Sandbox.unSandbox();
 
 	//We only use them while in the sandbox.
-	if (warning.message.indexOf("'GLOBAL' is deprecated") === -1 && warning.message.indexOf("'root' is deprecated") === -1) {
-		Log.error("Process warning", warning);
+	if (warning.message.indexOf("'GLOBAL' is deprecated") === -1 &&
+		warning.message.indexOf("'root' is deprecated") === -1 &&
+		warning.message.indexOf("queueMicrotask() is experimental") === -1) {
+		Log.warn("Process warning", warning);
 	}
 
 	if (shouldSandbox) {
@@ -65,9 +69,18 @@ try {
 }
 
 //Set log information:
-Log.options.tags!.master = Cluster.isMaster.toString();
-Log.options.tags!.processorVersion = "1.0.0";
+Log.options.tags.master = Cluster.isMaster.toString();
+// tslint:disable-next-line:no-var-requires
+Log.options.tags.processorVersion = require("../package.json").version;
 Log.Level = config!.VPROC_LOGLEVEL;
+if (config!.VPROC_LOGFORMAT !== "") {
+	Log.LogFormat = config!.VPROC_LOGFORMAT;
+}
+
+//Warn about version if needed
+if (!(Number.parseInt(process.versions.node.split(".")[0], 10) <= 13)) {
+	Log.warn("Validana has not been tested for node version 14+, use at your own risk!");
+}
 
 let isShuttingDown: boolean = false;
 let isGraceful: boolean = true;
@@ -86,7 +99,7 @@ function setupMaster(): void {
 	createWorker();
 
 	//If the worker shuts down.
-	Cluster.on("exit", (worker: Cluster.Worker, code: number, _: string) => {
+	Cluster.on("exit", async (worker: Cluster.Worker, code: number, _: string) => {
 		if (code === 0) {
 			//Should only happen if master told worker to shut down, for example when we tell the master to shut down.
 			Log.info(`Worker ${worker.id} (pid: ${worker.process.pid}) exited.`);
@@ -95,9 +108,8 @@ function setupMaster(): void {
 			Log.error(`Worker died with code ${code}`);
 			if (code >= 50 && code < 60) {
 				//So far only db corruption, wrong postgres version or another instance already running will result in this.
-				Log.fatal("Worker signaled it should stay down due to an error it cannot recover from.",
-					undefined).then(() => shutdownMaster(true, code));
-				return;
+				await Log.fatal("Worker signaled it should stay down due to an error it cannot recover from.");
+				return shutdownMaster(true, code);
 			}
 		}
 
@@ -108,6 +120,7 @@ function setupMaster(): void {
 	});
 
 	let notMinedTimes: number = 0;
+	let executingInit: boolean = false;
 	Cluster.on("online", () => notMinedTimes = 0);
 
 	//If a worker mines a block.
@@ -118,6 +131,9 @@ function setupMaster(): void {
 				Log.error("Processor using too much memory, restarting processor.");
 				shutdownWorker(worker.id.toString(), true);
 			}
+		} else if (typeof message === "object" && message.type === "init" && typeof message.init === "boolean") {
+			executingInit = message.init;
+			notMinedTimes = 0;
 		} else {
 			Log.error("Processor send unknown message.");
 		}
@@ -127,9 +143,13 @@ function setupMaster(): void {
 	setInterval(() => {
 		//How many times in a row has it failed to mine?
 		if (notMinedTimes === 2) {
-			Log.error("Processor failed to mine multiple times in a row, restarting processor.");
-			for (const id of Object.keys(Cluster.workers)) {
-				shutdownWorker(id, true);
+			if (executingInit) {
+				Log.info("Processed didn't mine, but is doing a potentially long transaction...");
+			} else {
+				Log.error("Processor failed to mine multiple times in a row, restarting processor.");
+				for (const id of Object.keys(Cluster.workers)) {
+					shutdownWorker(id, true);
+				}
 			}
 		} else if (notMinedTimes > 0 && notMinedTimes < 2) {
 			Log.warn("Processor failed to mine.");
@@ -138,14 +158,20 @@ function setupMaster(): void {
 	}, config.VPROC_BLOCKINTERVAL * 1000 * 2);
 
 	//What to do if we receive a signal to shutdown
-	process.on("SIGINT", () => shutdownMaster(false));
-	process.on("SIGTERM", () => shutdownMaster(true));
+	process.on("SIGINT", () => {
+		Log.info(`Master (pid: ${process.pid}) received SIGINT`);
+		shutdownMaster(false);
+	});
+	process.on("SIGTERM", () => {
+		Log.info(`Master (pid: ${process.pid}) received SIGTERM`);
+		shutdownMaster(true);
+	});
 }
 
 /** Shutdown the master. */
 function shutdownMaster(hardkill: boolean, code: number = 0): void {
 	if (!isShuttingDown) {
-		Log.info("Master shutting down...");
+		Log.info(`Master (pid: ${process.pid}) shutting down...`);
 
 		isShuttingDown = true;
 
@@ -178,31 +204,40 @@ function setupWorker(): void {
 	//Create the processor and start mining
 	const processor = new Processor(Cluster.worker, config);
 	setTimeout(() => processor.mineBlock(), 0);
-	setInterval(() => processor.mineBlock(), config.VPROC_BLOCKINTERVAL * 1000);
+	setInterval(() => processor.mineBlock(), 1000);
 
 	//If the master sends a shutdown message we do a graceful shutdown.
-	Cluster.worker.on("message", (message: string) => {
-		Log.info(`Worker ${process.pid} received message: ${message}`);
+	Cluster.worker.on("message", async (message: string) => {
+		const shouldSandbox = Sandbox.isSandboxed();
+		Sandbox.unSandbox();
+
+		Log.info(`Worker ${Cluster.worker.id} (pid: ${process.pid}) received message: ${message}`);
 		if (message === "shutdown" && !isShuttingDown) {
 			//The processor will also end the process after it is done.
 			isShuttingDown = true;
-			Processor.shutdown();
+			await Processor.shutdown();
+		}
+
+		if (shouldSandbox) {
+			Sandbox.sandbox();
 		}
 	});
 
 	//What to do if we receive a signal to shutdown?
-	process.on("SIGTERM", () => {
-		Log.info(`Worker ${process.pid} received SIGTERM`);
+	process.on("SIGTERM", async () => {
+		Sandbox.unSandbox();
+		Log.info(`Worker ${Cluster.worker.id} (pid: ${process.pid}) received SIGTERM`);
 		if (!isShuttingDown) {
 			isShuttingDown = true;
-			Processor.shutdown();
+			await Processor.shutdown();
 		}
 	});
-	process.on("SIGINT", () => {
-		Log.info(`Worker ${process.pid} received SIGINT`);
+	process.on("SIGINT", async () => {
+		Sandbox.unSandbox();
+		Log.info(`Worker ${Cluster.worker.id} (pid: ${process.pid}) received SIGINT`);
 		if (!isShuttingDown) {
 			isShuttingDown = true;
-			Processor.shutdown();
+			await Processor.shutdown();
 		}
 	});
 }

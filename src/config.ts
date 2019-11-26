@@ -1,4 +1,4 @@
-/**
+/*!
  * @license
  * Copyright Coinversable B.V. All Rights Reserved.
  *
@@ -12,9 +12,8 @@ import * as Path from "path";
 import { Crypto, Log, PrivateKey } from "@coinversable/validana-core";
 
 /** The config for the processor. Using all capitalized names because this is the standard for environment variables. */
-export interface Config extends StringConfig, NumberConfig { }
+export interface Config extends StringConfig, NumberConfig, BooleanConfig { }
 export interface StringConfig {
-	VPROC_NODEVERSION: string; //The required node js version.
 	VPROC_DBUSER: string; //The database user
 	VPROC_DBPASSWORD: string; //The database password
 	VPROC_DBNAME: string; //The database name
@@ -22,19 +21,23 @@ export interface StringConfig {
 	VPROC_SIGNPREFIX: string; //The prefix used for signing for this copy of the processor, to ensure transactions are only valid in this blockchain.
 	VPROC_PRIVATEKEY: string; //Private key of the processor.
 	VPROC_SENTRYURL: string; //The sentry url for error reporting (optional)
+	VPROC_LOGFORMAT: string; //Format used for logging
 }
 export interface NumberConfig {
 	VPROC_LOGLEVEL: number; //The Debug level we use.
 	VPROC_DBPORT: number; //The database host
 	VPROC_MAXMEMORY: number; //How much memory is the processor allowed to use before we restart it.
-	VPROC_BLOCKINTERVAL: number; //Block frequency of the processor (in seconds).
+	VPROC_BLOCKINTERVAL: number; //Maximum amount of time it has to create a block (once it starts) (in seconds).
+	VPROC_MINBLOCKINTERVAL: number; //Mimimum amount of time that must be between 2 blocks (in seconds).
 	VPROC_TRANSACTIONSPERBLOCK: number; //The maximum number of transactions in a block
 	VPROC_MAXBLOCKSIZE: number; //The maximum size of a block (in bytes)
+}
+export interface BooleanConfig {
+	VPROC_EXCLUDEREJECTED: boolean; //Exclude rejected transaction from blocks
 }
 
 //The default values
 const stringConfig: StringConfig = {
-	VPROC_NODEVERSION: "10",
 	VPROC_DBUSER: "processor",
 	VPROC_DBNAME: "blockchain",
 	VPROC_DBHOST: "localhost",
@@ -42,15 +45,20 @@ const stringConfig: StringConfig = {
 	VPROC_SIGNPREFIX: "",
 	VPROC_DBPASSWORD: "",
 	VPROC_PRIVATEKEY: "",
-	VPROC_SENTRYURL: ""
+	VPROC_SENTRYURL: "",
+	VPROC_LOGFORMAT: ""
 };
 const numberConfig: NumberConfig = {
 	VPROC_LOGLEVEL: 0,
 	VPROC_DBPORT: 5432,
 	VPROC_MAXMEMORY: 1024,
-	VPROC_BLOCKINTERVAL: 5,
+	VPROC_BLOCKINTERVAL: 60,
+	VPROC_MINBLOCKINTERVAL: 5,
 	VPROC_TRANSACTIONSPERBLOCK: 100,
 	VPROC_MAXBLOCKSIZE: 1000000
+};
+const boolConfig: BooleanConfig = {
+	VPROC_EXCLUDEREJECTED: false
 };
 
 /** Load the configuration values from the environment variables and config file. */
@@ -61,7 +69,7 @@ export function loadConfig(): Readonly<Config> {
 		validate();
 	}
 
-	return Object.assign(stringConfig, numberConfig);
+	return Object.assign({}, stringConfig, numberConfig, boolConfig);
 }
 
 /** Load all keys from environment variables. */
@@ -76,11 +84,21 @@ function loadEnv(): void {
 	for (const key of Object.keys(numberConfig)) {
 		const processKey = process.env[key];
 		if (processKey !== undefined) {
-			const envValue = Number.parseInt(processKey);
+			const envValue = Number.parseInt(processKey, undefined);
 			if (!Number.isSafeInteger(envValue)) {
 				throw new Error(`Invalid value for environment variable: ${key}, expected a number.`);
 			} else {
 				numberConfig[key as keyof NumberConfig] = envValue;
+			}
+		}
+	}
+	for (const key of Object.keys(boolConfig)) {
+		const processKey = process.env[key];
+		if (processKey !== undefined) {
+			if (processKey !== "true" && processKey !== "false") {
+				throw new Error(`Invalid value for environment variable: ${key}, expected 'true' or 'false'.`);
+			} else {
+				boolConfig[key as keyof BooleanConfig] = processKey === "true";
 			}
 		}
 	}
@@ -96,11 +114,14 @@ function loadFile(): void {
 			throw new Error(`Unable to find file: ${configPath}.`);
 		}
 		//Load config file.
-		let configFile: any;
+		let configFile: { [key: string]: any };
 		try {
 			configFile = JSON.parse(Crypto.binaryToUtf8(FS.readFileSync(configPath)));
 		} catch (error) {
 			throw new Error(`Unable to load config file: ${configPath}: ${(error as Error).message}: ${(error as Error).stack}.`);
+		}
+		if (typeof configFile !== "object" || configFile === null) {
+			throw new Error("Config must be a json object.");
 		}
 
 		//Load all values from the config file
@@ -109,13 +130,19 @@ function loadFile(): void {
 				if (typeof configFile[key] !== "string") {
 					throw new Error(`Invalid type in config file for key: ${key}, expected a string.`);
 				} else {
-					stringConfig[key as keyof StringConfig] = configFile[key].toString();
+					stringConfig[key as keyof StringConfig] = configFile[key];
 				}
 			} else if (numberConfig.hasOwnProperty(key)) {
 				if (!Number.isSafeInteger(configFile[key])) {
 					throw new Error(`Invalid type in config file for key: ${key}, expected an integer.`);
 				} else {
 					numberConfig[key as keyof NumberConfig] = configFile[key];
+				}
+			} else if (boolConfig.hasOwnProperty(key)) {
+				if (typeof configFile[key] !== "boolean") {
+					throw new Error(`Invalid type in config file for key: ${key}, expected a boolean.`);
+				} else {
+					boolConfig[key as keyof BooleanConfig] = configFile[key];
 				}
 			} else {
 				Log.warn(`Unknown config file key: ${key}`);
@@ -131,15 +158,12 @@ function validate(): void {
 	for (const subVersion of process.versions.node.split(".")) {
 		version.push(Number.parseInt(subVersion, 10));
 	}
-	if (!(version[0] > 7 || version[0] === 7 && version[1] >= 6)) {
+	if (version[0] < 7 || version[0] === 7 && version[1] < 6) {
 		throw new Error(`Processor requires at least node js version 7.6 to function, while currently running: ${process.versions.node}.`);
 	}
-	//Check if we are running the required version according to the config (at least the mayor version should be provided by the config).
-	const configVersion: string[] = stringConfig.VPROC_NODEVERSION.split(".");
-	for (let i = 0; i < configVersion.length || i < 1; i++) {
-		if (!(configVersion[i] === "x" || version[i] === Number.parseInt(configVersion[i], 10))) {
-			throw new Error(`Invalid node js version, running version: ${process.versions.node}, required version by config: ${stringConfig.VPROC_NODEVERSION}.`);
-		}
+	//Bug in setInterval makes it stop working after 2^31 ms = 25 days
+	if (version[0] === 10 && version[1] <= 8) {
+		throw new Error(`Please upgrade to node js version >=10.9, there is a problematic bug in earlier 10.x versions. Running version: ${process.versions.node}.`);
 	}
 	//Check if all numbers have a valid value (NaN always results to false comparisons) and are in range:
 	if (numberConfig.VPROC_DBPORT <= 0 || numberConfig.VPROC_DBPORT > 65535) {
@@ -148,8 +172,11 @@ function validate(): void {
 	if (numberConfig.VPROC_LOGLEVEL < Log.Debug || numberConfig.VPROC_LOGLEVEL > Log.None) {
 		throw new Error(`Invalid log level: ${numberConfig.VPROC_LOGLEVEL}, should be 0-5.`);
 	}
-	if (numberConfig.VPROC_BLOCKINTERVAL <= 0) {
-		throw new Error(`Invalid block interval: ${numberConfig.VPROC_BLOCKINTERVAL}, should be at least 1 second.`);
+	if (numberConfig.VPROC_MINBLOCKINTERVAL <= 0) {
+		throw new Error(`Invalid block min interval: ${numberConfig.VPROC_MINBLOCKINTERVAL}, should be at least 1 second.`);
+	}
+	if (numberConfig.VPROC_BLOCKINTERVAL < numberConfig.VPROC_MINBLOCKINTERVAL) {
+		throw new Error(`Invalid block interval: ${numberConfig.VPROC_BLOCKINTERVAL}, should be at least MINBLOCKINTERVAL.`);
 	}
 	if (numberConfig.VPROC_TRANSACTIONSPERBLOCK <= 0) {
 		throw new Error(`Invalid max transactions per block: ${numberConfig.VPROC_TRANSACTIONSPERBLOCK}, should be at least 1.`);
@@ -168,7 +195,7 @@ function validate(): void {
 		//Do not log private key
 		throw new Error(`Invalid private key. (Only compressed keys with prefix 0x80 are supported.)`);
 	} else {
-		Log.options.tags!.address = PrivateKey.fromWIF(stringConfig.VPROC_PRIVATEKEY).getAddress();
+		Log.options.tags.address = PrivateKey.fromWIF(stringConfig.VPROC_PRIVATEKEY).getAddress();
 	}
 	//Check if this processor has a sign previx
 	if (stringConfig.VPROC_SIGNPREFIX === "" || Crypto.utf8ToBinary(stringConfig.VPROC_SIGNPREFIX).length > 255) {
