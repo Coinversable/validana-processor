@@ -1,4 +1,4 @@
-ARG POSTGRESVERSION=10
+ARG POSTGRESVERSION=12
 FROM postgres:${POSTGRESVERSION}
 ARG POSTGRESVERSION
 
@@ -10,7 +10,7 @@ ARG BACKENDPASS
 
 # Setup script
 COPY ./SetupDB.sql /docker-entrypoint-initdb.d/SetupDB
-RUN echo -e "#!/bin/bash\n\
+RUN echo "#!/bin/bash\n\
 	psql -U postgres -c \"SET synchronous_commit TO off;\" -c \"CREATE DATABASE blockchain WITH ENCODING = 'UTF8';\"\n\
 	psql -U postgres -d blockchain -v processor_username=$PROCESSORNAME -v processor_password=$PROCESSORPASS \
-		-v backend_username=$BACKENDNAME -v backend_password=$BACKENDPASS -f SetupDB" > SetupDB.sh
+		-v backend_username=$BACKENDNAME -v backend_password=$BACKENDPASS -f /docker-entrypoint-initdb.d/SetupDB" > /docker-entrypoint-initdb.d/SetupDB.sh

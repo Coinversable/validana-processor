@@ -138,7 +138,7 @@ export class Processor extends Basic {
 					} else {
 						if (ourPostgresVersion >= 120000 && !this.warnedPostgresVersion) {
 							this.warnedPostgresVersion = true;
-							Log.warn("Validana has not been tested for postgres version 12+, use at your own risk!");
+							Log.warn("Validana has not been tested for postgres version 13+, use at your own risk!");
 						}
 						Log.options.tags.postgresVersion = result.current_setting;
 					}
