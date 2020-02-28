@@ -24,6 +24,7 @@ All Validana packages and smart contracts are entirely written in Typescript / J
 
 Validana Processor (This Package)
 =================================
+If you want to setup your own Validana Blockchain, see the [wiki](https://github.com/Coinversable/validana-processor/wiki). If you want to help with the development of the Validana Processor see below.
 
 Setup Development environment
 -----------------------------
