@@ -93,7 +93,7 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 			payload: JSON.stringify(payload)
 		};
 
-		beforeAll(async (done) => {
+		beforeAll(async () => {
 			try { //Create the test database
 				const setupClient = new Client({ user: "postgres", password: postgresPassword, database: "postgres", port: 5432, host: "localhost" });
 				await setupClient.connect();
@@ -116,17 +116,14 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 
 			//Do not spam console output
 			Log.Level = Log.Fatal;
-
-			done();
 		});
 
-		afterAll(async (done) => {
+		afterAll(async () => {
 			await helperClient.end();
-			done();
 		});
 
 		describe("Setup", () => {
-			beforeEach(async (done) => {
+			beforeEach(async () => {
 				//Reset any data if needed
 				const resetData =
 					`DELETE FROM basics.transactions; ` +
@@ -137,20 +134,17 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await ProcessorTest.endConnection();
 				await proc.mineBlock();
 				await ProcessorTest.endConnection();
-
-				done();
 			});
 
-			it("Still mining", async (done) => {
+			it("Still mining", async () => {
 				await Promise.all([
 					proc.mineBlock(),
 					proc.mineBlock()
 				]);
 				//We already mined 1 before the tests
 				expect((await latestBlock()).block_id).toBe(1);
-				done();
 			});
-			it("invalid tx format", async (done) => {
+			it("invalid tx format", async () => {
 				const contractCode = "return 'a89hwf';";
 				const id = Transaction.generateId();
 				const trx = Transaction.sign(Object.assign({}, tx, {
@@ -166,9 +160,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 						trx.getSignature(), trx.getPublicKeyBuffer(), Date.now()]);
 				await proc.mineBlock();
 				expect((await txById(id)).status).toBe("invalid");
-				done();
 			});
-			it("Error load previous block", async (done) => {
+			it("Error load previous block", async () => {
 				const contractCode = "return 'a89hwf';";
 				await proc.mineBlock();
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
@@ -193,9 +186,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect((await latestBlock()).block_id).toBe(block.block_id + 1);
 				expect(await countUnprocessed()).toBe(0);
-				done();
 			});
-			it("Error everywhere", async (done) => {
+			it("Error everywhere", async () => {
 				const contractCode = "return 'a89hwf7ujr';";
 				const id = Transaction.generateId();
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
@@ -215,9 +207,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				//14th should succeed
 				await proc.mineBlock();
 				expect((await txById(id)).status).toBe("accepted");
-				done();
 			});
-			it("Error in fastquery", async (done) => {
+			it("Error in fastquery", async () => {
 				const contractCode = "queryFast('INSERT INTO bla (bla) VALUES (1);', []); return 'a89hwf';";
 				await proc.mineBlock();
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
@@ -235,9 +226,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				}), signPrefix, privateKey));
 				await proc.mineBlock();
 				expect((await txById(id)).status).toBe("invalid");
-				done();
 			});
-			it("Error retry", async (done) => {
+			it("Error retry", async () => {
 				const contractCode = "await query('SELECT 1;', []); return 'as8ydh9gfn';";
 				const id = Transaction.generateId();
 				await proc.mineBlock();
@@ -253,9 +243,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				expect((await txById(id)).status).toBe("new");
 				await proc.mineBlock();
 				expect((await txById(id)).status).toBe("accepted");
-				done();
 			});
-			it("Error rollback", async (done) => {
+			it("Error rollback", async () => {
 				const contractCode = "return 'a89hwf';";
 				const contractHash = Crypto.hash256(contractCode);
 				await proc.mineBlock();
@@ -278,9 +267,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				}), signPrefix, privateKey), 1);
 				await proc.mineBlock();
 				expect((await txById(id2)).contract_type).toBe("Unknown");
-				done();
 			});
-			it("Has previous block", async (done) => {
+			it("Has previous block", async () => {
 				//We really want it to be empty for this test, not even a single block for proper previous block ts.
 				const resetData =
 					`DELETE FROM basics.transactions; ` +
@@ -293,12 +281,11 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await ProcessorTest.endConnection();
 				await proc.mineBlock();
 				expect((await latestBlock()).block_id).toBe(1);
-				done();
 			});
 		});
 
 		describe("Mine", () => {
-			beforeEach(async (done) => {
+			beforeEach(async () => {
 				//Reset any data if needed
 				const resetData =
 					`DELETE FROM basics.transactions; ` +
@@ -309,11 +296,9 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				//Reset connection status
 				await ProcessorTest.endConnection();
-
-				done();
 			});
 
-			it("Simple Tx", async (done) => {
+			it("Simple Tx", async () => {
 				const contractCode = "return '1';";
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
 					transaction_id: Transaction.generateId(),
@@ -330,9 +315,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect(await countUnprocessed()).toBe(0);
 				expect((await latestBlock()).transactions_amount).toBe(2);
-				done();
 			});
-			it("Max block size", async (done) => {
+			it("Max block size", async () => {
 				const contractCode = "return '1';" + "f".repeat(60000);
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
 					transaction_id: Transaction.generateId(),
@@ -355,9 +339,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect(await countUnprocessed()).toBe(0);
 				expect((await latestBlock()).transactions_amount).toBe(1);
-				done();
 			});
-			it("valid, invalid, valid", async (done) => {
+			it("valid, invalid, valid", async () => {
 				const contractCode = "return '1'; //aoisdfhj";
 				const id1 = Transaction.generateId();
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
@@ -389,9 +372,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				expect((await txById(id1)).status).toBe("accepted");
 				expect((await txById(id2)).status).toBe("invalid");
 				expect((await txById(id3)).status).toBe("accepted");
-				done();
 			});
-			it("single invalid", async (done) => {
+			it("single invalid", async () => {
 				const contractCode = "return else";
 				const id1 = Transaction.generateId();
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
@@ -404,9 +386,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect((await txById(id1)).status).toBe("invalid");
 				expect((await latestBlock()).transactions_amount).toBe(0);
-				done();
 			});
-			it("max tx per block + 1", async (done) => {
+			it("max tx per block + 1", async () => {
 				const contractCode1 = "return 1; //a892h4fn";
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
 					transaction_id: Transaction.generateId(),
@@ -443,9 +424,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				expect(await countUnprocessed()).toBe(1);
 				await proc.mineBlock();
 				expect(await countUnprocessed()).toBe(0);
-				done();
 			});
-			it("rejected v1", async (done) => {
+			it("rejected v1", async () => {
 				const contractCode = "return 'Not ok';";
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
 					transaction_id: Transaction.generateId(),
@@ -463,9 +443,8 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect((await txById(id2)).status).toBe("rejected");
 				expect((await latestBlock()).transactions_amount).toBe(2);
-				done();
 			});
-			it("rejected v2", async (done) => {
+			it("rejected v2", async () => {
 				const contractCode = "return reject('bla');";
 				await insertTx(Transaction.sign(Object.assign({}, tx, {
 					transaction_id: Transaction.generateId(),
@@ -483,7 +462,6 @@ if (process.env.integration === "true" || process.env.INTEGRATION === "true") {
 				await proc.mineBlock();
 				expect((await txById(id2)).status).toBe("rejected");
 				expect((await latestBlock()).transactions_amount).toBe(1);
-				done();
 			});
 		});
 	});

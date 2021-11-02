@@ -1,11 +1,11 @@
-ARG NODEVERSION=12
+ARG NODEVERSION=16
 FROM node:${NODEVERSION}
 
 # Clone the projects into the docker container and compile it
 ENV NODE_ENV=production
 ENV NODE_NO_WARNINGS=1
 RUN yarn global add typescript
-RUN git clone https://github.com/Coinversable/validana-processor.git --branch v2.1.2 /usr/node
+RUN git clone https://github.com/Coinversable/validana-processor.git --branch v2.2.0 /usr/node
 RUN yarn --cwd /usr/node install --frozen-lockfile
 RUN tsc -p /usr/node/tsconfig.json
 

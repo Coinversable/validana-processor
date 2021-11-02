@@ -1,7 +1,6 @@
 {
 	"name": "@coinversable/validana-processor",
-	"version": "2.1.2",
-	"private": true,
+	"version": "2.2.0",
 	"description": "The Validana processor for processing transactions and generating blocks.",
 	"author": "Coinversable BV",
 	"homepage": "https://validana.io/",
@@ -10,7 +9,7 @@
 		"type": "git",
 		"url": "https://github.com/Coinversable/validana-processor.git"
 	},
-	"main": "src/app.ts",
+	"main": "src/index.ts",
 	"keywords": [
 		"coinversable",
 		"validana",
@@ -22,18 +21,21 @@
 		"keys": "node --no-warnings -e \"const PK = require('validana-core').PrivateKey; const key = process.argv[1] ? PK.fromWIF(process.argv[1]) : PK.generate(); console.log(key.toWIF(), key.publicKey.toString('hex'), key.getAddress())\"",
 		"keysjson": "node --no-warnings -pe \"const PK = require('validana-core').PrivateKey; const key = process.argv[1] ? PK.fromWIF(process.argv[1]) : PK.generate(); JSON.stringify({privateKey: key.toWIF(), publicKey: key.publicKey.toString('hex'), address: key.getAddress()})\"",
 		"start": "node dist/index.js",
-		"tslint": "tslint --project tsconfig.json -c tslint.json && tslint --project src/__tests__/tsconfig.json -c tslint.json",
+		"lint": "eslint .",
 		"test": "tsc -p src/__tests__/tsconfig.json && nyc jasmine dist/__tests__/**/*.js",
 		"testall": "tsc -p src/__tests__/tsconfig.json && nyc jasmine dist/__tests__/**/*.js INTEGRATION=true"
 	},
 	"dependencies": {
-		"@coinversable/validana-core": "^2.0.1",
-		"@types/node": "*"
+		"@coinversable/validana-core": "^2.2.0",
+		"@types/node": "^16.11.6"
 	},
 	"devDependencies": {
-		"@types/jasmine": "*",
-		"tslint": "^5.0.0",
-		"typescript": "^3.7.0"
+		"@types/jasmine": "^3.10.1",
+		"@typescript-eslint/eslint-plugin": "^5.2.0",
+		"@typescript-eslint/parser": "^5.2.0",
+		"eslint": "^8.1.0",
+		"eslint-plugin-jsdoc": "^37.0.3",
+		"typescript": "^4.4.0"
 	},
 	"nyc": {
 		"check-coverage": false,

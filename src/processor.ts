@@ -6,7 +6,7 @@
  * found in the LICENSE file at https://validana.io/license
  */
 
-import * as Cluster from "cluster";
+import { Worker } from "cluster";
 import { Crypto, Log, Basic, TxStatus, DBTransaction, DBBlock, Block, Transaction, CreatePayload, DeletePayload, PrivateKey, Sandbox } from "@coinversable/validana-core";
 import { Config } from "./config";
 
@@ -54,7 +54,7 @@ export class Processor extends Basic {
 	private currentBlockId: number;
 
 	private readonly config: Readonly<Config>;
-	private readonly worker: Cluster.Worker;
+	private readonly worker: Worker;
 	private readonly privateKey: PrivateKey;
 	private readonly processorAddress: string;
 
@@ -63,7 +63,7 @@ export class Processor extends Basic {
 	 * @param worker The worker that created the processor
 	 * @param config The config for the processor to use
 	 */
-	constructor(worker: Cluster.Worker, config: Readonly<Config>) {
+	constructor(worker: Worker, config: Readonly<Config>) {
 		super({
 			user: config.VPROC_DBUSER,
 			database: config.VPROC_DBNAME,
@@ -87,7 +87,7 @@ export class Processor extends Basic {
 	 * Mines a single block (if it is not busy already).
 	 * If it was in the middle of mining a block (when it crashed) rollback and finish the processing transactions first.
 	 * If not it retrieves all unprocessed transactions and for each transaction:
-	 * 		validates, execute smart contract and mark them as processing.
+	 * * validates, execute smart contract and mark them as processing.
 	 * It will then create a block and mark all the processing transactions as processed.
 	 */
 	public async mineBlock(): Promise<void> {
@@ -98,7 +98,7 @@ export class Processor extends Basic {
 			}
 
 			//If we had multiple failures in a row the problem seems to not resolve itsself. We will still try to mine again...
-			if (this.failures > 3) {
+			if (this.failures > 8) {
 				Log.error("Processor failed to mine multiple times in a row.");
 			}
 
@@ -138,7 +138,7 @@ export class Processor extends Basic {
 					} else {
 						if (ourPostgresVersion >= 130000 && !this.warnedPostgresVersion) {
 							this.warnedPostgresVersion = true;
-							Log.warn("Validana has not been tested for postgres version 13+, use at your own risk!");
+							Log.warn("Validana has not been tested for postgres version 15+, use at your own risk!");
 						}
 						Log.options.tags.postgresVersion = result.current_setting;
 					}
@@ -217,7 +217,9 @@ export class Processor extends Basic {
 				}
 
 				//Process the transaction
+				const startTime = Date.now();
 				const processResult = await this.processTx(tx, this.currentBlockId, currentBlockTs, this.processorAddress, this.previousBlockTs, this.previousBlockHash, true);
+				const stopTime = Date.now();
 				unprocessedTx.status = processResult.status === "v1Rejected" ? TxStatus.Rejected : processResult.status;
 				unprocessedTx.message = Crypto.makeUtf8Postgres(processResult.message.slice(0, 128));
 
@@ -254,7 +256,6 @@ export class Processor extends Basic {
 					//Make transaction searchable with extra info (use String() so it also works on null)
 					const payload: { [index: string]: any } = tx.getPayloadJson() ?? {};
 					unprocessedTx.sender = tx.getAddress();
-					// tslint:disable-next-line: no-null-keyword
 					unprocessedTx.receiver = payload.receiver == null ? undefined : String(payload.receiver).slice(0, 35);
 
 					//Add the transaction
@@ -268,12 +269,14 @@ export class Processor extends Basic {
 					} else if (Processor.txContractHash.equals(Processor.deleteContractHash)) {
 						Log.info(`Contract deleted: ${(payload as DeletePayload).hash}`);
 					} else {
-						Log.debug(`Processed transaction ${Crypto.binaryToHex(tx.getId())}, of type: ${unprocessedTx.contractType}, result: ${unprocessedTx.message}`);
+						Log.debug(`Processed transaction ${Crypto.binaryToHex(tx.getId())}, of type: ${unprocessedTx.contractType}` +
+							`, result: ${unprocessedTx.message}, ms taken: ${stopTime - startTime}`);
 					}
 				} else if (unprocessedTx.status === "invalid") {
 					Log.warn(`Invalid transaction: ${Crypto.binaryToHex(unprocessedTx.transaction_id)} for contract ${unprocessedTx.contractType}: ${unprocessedTx.message}`);
 				} else if (unprocessedTx.status === "rejected") {
-					Log.debug(`Rejected transaction: ${Crypto.binaryToHex(unprocessedTx.transaction_id)} for contract ${unprocessedTx.contractType}: ${unprocessedTx.message}`);
+					Log.debug(`Rejected transaction: ${Crypto.binaryToHex(unprocessedTx.transaction_id)} for contract ` +
+						`${unprocessedTx.contractType}: ${unprocessedTx.message}, ms taken: ${stopTime - startTime}`);
 				}
 
 				if (unprocessedTx.status !== "retry") {

@@ -2,10 +2,10 @@ version: "2"
 services:
   processor:
     build:
-      context: https://github.com/Coinversable/validana-processor.git#v2.1.2
+      context: https://github.com/Coinversable/validana-processor.git#v2.2.0
       dockerfile: Processor.Dockerfile
       args:
-        NODEVERSION: 12
+        NODEVERSION: 16
     restart: unless-stopped
     environment:
       VPROC_DBHOST: database
@@ -19,10 +19,10 @@ services:
       VPROC_SIGNPREFIX: 
   node:
     build:
-      context: https://github.com/Coinversable/validana-node.git#v2.1.2
+      context: https://github.com/Coinversable/validana-node.git#v2.2.0
       dockerfile: Node.Dockerfile
       args:
-        NODEVERSION: 12
+        NODEVERSION: 16
     restart: unless-stopped
     environment:
       VNODE_ISPROCESSOR: 'true'
@@ -40,8 +40,6 @@ services:
       VNODE_TLS: 'false'
       VNODE_KEYPATH: '/usr/node/certificates/mycert.key'
       VNODE_CERTPATH: '/usr/node/certificates/mycert.cert'
-      VNODE_PROCESSORPORT: 56789
-      VNODE_LISTENPORT: 29473
     #volumes:
       #- ./certificates:/usr/node/certificates
     ports:
@@ -50,10 +48,10 @@ services:
       - "56789:56789" # Port used to be found by nodes, use this as VNODE_PROCESSORPORT for nodes.
   database:
     build: 
-      context: https://github.com/Coinversable/validana-processor.git#v2.1.2
+      context: https://github.com/Coinversable/validana-processor.git#v2.2.0
       dockerfile: DB.Dockerfile
       args:
-        POSTGRESVERSION: 12
+        POSTGRESVERSION: 14
         # The processorpass is to be used the the processor only.
         # Changing this afterwards requires removing the docker volume (containing all data!) or manually connecting to postgres and updating the password.
         PROCESSORPASS: 
@@ -72,12 +70,13 @@ services:
   server:
     build:
       # The server you wish to use.
-      context: https://github.com/Coinversable/validana-server.git#v2.1.0
+      context: https://github.com/Coinversable/validana-server.git#v2.2.0
       dockerfile: Dockerfile
+      args:
+        NODEVERSION: 16
     restart: unless-stopped
     environment:
       VSERVER_DBHOST: database
-      VSERVER_CACHING: 'false'
       # Should be the same as database BACKENDPASS above.
       VSERVER_DBPASSWORD: 
       # If you want to copy the key/cert files into the container download the Dockerfile and edit it manually.
