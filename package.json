@@ -26,7 +26,7 @@
 		"testall": "tsc -p src/__tests__/tsconfig.json && nyc jasmine dist/__tests__/**/*.js INTEGRATION=true"
 	},
 	"dependencies": {
-		"@coinversable/validana-core": "^2.2.0",
+		"@coinversable/validana-core": "^2.0.2",
 		"@types/node": "^16.11.6"
 	},
 	"devDependencies": {

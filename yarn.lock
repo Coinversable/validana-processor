@@ -2,7 +2,7 @@
 # yarn lockfile v1
 
 
-"@coinversable/validana-core@^2.2.0":
+"@coinversable/validana-core@^2.0.2":
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/@coinversable/validana-core/-/validana-core-2.0.2.tgz#aadb899245c9c70cc18e7c8f1fc4ba7ba3c7af85"
   integrity sha512-uZrn/1DyKoAv9VZ9jATSV04nILy4WXI4OXJQpjlwqDfiGfycX8GwIejDH08XicnxZih9Qc6ApGMQcaO6VO20kQ==
